@@ -28,11 +28,13 @@ let main argv =
     let parser = ArgumentParser.Create<CliArguments>(programName = "fspack", errorHandler = errorHandler)
 
     let results = parser.ParseCommandLine (inputs=argv, ignoreUnrecognized = true)
-
+    
 
     let sourceFile = results.GetResult(CliArguments.File)
     let targetFramework = results.GetResult(CliArguments.Framework, defaultValue = "net6.0")
     let verbose =  match results.TryGetResult(CliArguments.Verbose) with | Some _ -> true |None -> false
+    let doAot = match results.TryGetResult(CliArguments.AOT) with | Some _ -> true |None -> false
+    
     let preprocessor = FsxPreprocessor(verbose = verbose)
     preprocessor.AddSource(sourceFile)
     preprocessor.Process()
@@ -47,7 +49,11 @@ let main argv =
                 $"<Compile Include=\"{tempSource}\" />")
             |> fun x -> String.Join(Environment.NewLine, x)
     
-    let packageReferences = preprocessor.GetPackageReferences()
+    let mutable packageReferences = preprocessor.GetPackageReferences()
+    if doAot then
+        packageReferences <- Array.append packageReferences [|
+            {Name = "Microsoft.DotNet.ILCompiler"; Version = "7.0.*"}
+        |]
     let packageReferencesList =
         packageReferences
             |> Array.map (fun pr ->
@@ -90,7 +96,7 @@ let main argv =
     File.WriteAllText(tempProject, projectContent);
 
     let selfContained = match results.TryGetResult(CliArguments.NoSelfContained) with | Some _ -> false |None -> true
-    let doAot = match results.TryGetResult(CliArguments.AOT) with | Some _ -> true |None -> false
+    
     let additionalArguments = results.UnrecognizedCliParams
 
     if verbose then Console.WriteLine($"Compiling generated file {tempProject}")
